@@ -420,13 +420,73 @@
       padding: 8px 0;
     }
 
-    .history-item {
+    .history-student {
       border: 1px solid #e2e2e2;
-      border-radius: 12px;
-      padding: 11px;
+      border-radius: 13px;
       margin-bottom: 10px;
       background: #ffffff;
+      overflow: hidden;
     }
+
+    .history-student-summary {
+      width: 100%;
+      border: none;
+      background: #ffffff;
+      padding: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .history-student-summary:hover {
+      background: #f6f8ff;
+    }
+
+    .history-student-name {
+      font-weight: 800;
+      font-size: 12px;
+      text-transform: uppercase;
+      color: #111111;
+      line-height: 1.35;
+    }
+
+    .history-student-meta {
+      display: block;
+      margin-top: 3px;
+      font-size: 10.5px;
+      color: #666666;
+      font-weight: 500;
+      text-transform: none;
+    }
+
+    .history-count-badge {
+      white-space: nowrap;
+      border-radius: 999px;
+      background: #eef2ff;
+      color: #1f3b89;
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .history-student-details {
+      border-top: 1px solid #eeeeee;
+      padding: 10px 12px 12px;
+      background: #fbfbfc;
+    }
+
+    .history-record {
+      border: 1px solid #e8e8e8;
+      border-radius: 11px;
+      padding: 10px;
+      margin-bottom: 9px;
+      background: #ffffff;
+    }
+
+    .history-record:last-child { margin-bottom: 0; }
 
     .history-title {
       font-weight: 700;
@@ -547,7 +607,7 @@
 
   <aside id="historicoPainel" class="history-panel" aria-label="Histórico de advertências salvas">
     <div class="history-header">
-      <strong>Histórico de advertências</strong>
+      <strong>Histórico por aluno</strong>
       <button class="close-history" type="button" onclick="fecharHistorico()" aria-label="Fechar histórico">×</button>
     </div>
 
@@ -701,6 +761,7 @@
     const LIMITE_HISTORICO = 500;
 
     let alunosCSV = [];
+    let alunosAbertosNoHistorico = new Set();
 
     function normalizarTexto(texto) {
       return String(texto || "")
@@ -1062,6 +1123,44 @@
       return botao;
     }
 
+    function pluralAdvertencias(quantidade) {
+      return quantidade === 1 ? "1 advertência" : `${quantidade} advertências`;
+    }
+
+    function obterNomeAlunoHistorico(registro) {
+      return (registro.discente || registro.assinaturaAluno || "Advertência sem nome").trim() || "Advertência sem nome";
+    }
+
+    function agruparHistoricoPorAluno(historico) {
+      const grupos = new Map();
+
+      historico.forEach((registro) => {
+        const nome = obterNomeAlunoHistorico(registro);
+        const chave = normalizarTexto(nome) || "ADVERTENCIA SEM NOME";
+
+        if (!grupos.has(chave)) {
+          grupos.set(chave, {
+            chave,
+            nome,
+            registros: []
+          });
+        }
+
+        grupos.get(chave).registros.push(registro);
+      });
+
+      return Array.from(grupos.values()).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    }
+
+    function alternarAlunoNoHistorico(chaveAluno) {
+      if (alunosAbertosNoHistorico.has(chaveAluno)) {
+        alunosAbertosNoHistorico.delete(chaveAluno);
+      } else {
+        alunosAbertosNoHistorico.add(chaveAluno);
+      }
+      renderizarHistorico();
+    }
+
     function renderizarHistorico() {
       const historico = obterHistorico();
       listaHistorico.innerHTML = "";
@@ -1074,33 +1173,79 @@
         return;
       }
 
-      historico.forEach((registro) => {
-        const item = document.createElement("div");
-        item.className = "history-item";
+      const grupos = agruparHistoricoPorAluno(historico);
+      const resumo = document.createElement("div");
+      resumo.className = "history-empty";
+      resumo.textContent = `${grupos.length} aluno(s) no histórico • ${pluralAdvertencias(historico.length)} salva(s). Clique no nome do aluno para ver as advertências dele.`;
+      listaHistorico.appendChild(resumo);
 
-        const titulo = document.createElement("div");
-        titulo.className = "history-title";
-        titulo.textContent = registro.discente || "Advertência sem nome";
+      grupos.forEach((grupo) => {
+        const alunoAberto = alunosAbertosNoHistorico.has(grupo.chave);
+        const ultimoRegistro = grupo.registros[0];
 
-        const meta = document.createElement("div");
-        meta.className = "history-meta";
-        meta.textContent = `${formatarDataSalvamento(registro.salvoEmISO)} • ${registro.serie || "Série não informada"} • Turma ${registro.turma || "não informada"} • ${registro.turno || "Turno não informado"}`;
+        const itemAluno = document.createElement("div");
+        itemAluno.className = "history-student";
 
-        const motivo = document.createElement("div");
-        motivo.className = "history-reason";
-        motivo.textContent = registro.motivo ? `Motivo: ${registro.motivo}` : "Motivo não informado";
+        const cabecalho = document.createElement("button");
+        cabecalho.type = "button";
+        cabecalho.className = "history-student-summary";
+        cabecalho.setAttribute("aria-expanded", alunoAberto ? "true" : "false");
+        cabecalho.addEventListener("click", () => alternarAlunoNoHistorico(grupo.chave));
 
-        const botoes = document.createElement("div");
-        botoes.className = "history-buttons";
-        botoes.appendChild(criarBotaoHistorico("Abrir", () => carregarRegistroDoHistorico(registro.id)));
-        botoes.appendChild(criarBotaoHistorico("Imprimir", () => imprimirRegistroDoHistorico(registro.id)));
-        botoes.appendChild(criarBotaoHistorico("Excluir", () => excluirRegistroDoHistorico(registro.id), "danger"));
+        const nome = document.createElement("span");
+        nome.className = "history-student-name";
+        nome.textContent = grupo.nome;
 
-        item.appendChild(titulo);
-        item.appendChild(meta);
-        item.appendChild(motivo);
-        item.appendChild(botoes);
-        listaHistorico.appendChild(item);
+        const metaAluno = document.createElement("span");
+        metaAluno.className = "history-student-meta";
+        metaAluno.textContent = `Última advertência: ${formatarDataSalvamento(ultimoRegistro.salvoEmISO)}${alunoAberto ? " • clique para fechar" : " • clique para abrir"}`;
+        nome.appendChild(metaAluno);
+
+        const contador = document.createElement("span");
+        contador.className = "history-count-badge";
+        contador.textContent = pluralAdvertencias(grupo.registros.length);
+
+        cabecalho.appendChild(nome);
+        cabecalho.appendChild(contador);
+        itemAluno.appendChild(cabecalho);
+
+        if (alunoAberto) {
+          const detalhesAluno = document.createElement("div");
+          detalhesAluno.className = "history-student-details";
+
+          grupo.registros.forEach((registro, index) => {
+            const item = document.createElement("div");
+            item.className = "history-record";
+
+            const titulo = document.createElement("div");
+            titulo.className = "history-title";
+            titulo.textContent = `Advertência ${grupo.registros.length - index}`;
+
+            const meta = document.createElement("div");
+            meta.className = "history-meta";
+            meta.textContent = `${formatarDataSalvamento(registro.salvoEmISO)} • ${registro.serie || "Série não informada"} • Turma ${registro.turma || "não informada"} • ${registro.turno || "Turno não informado"}`;
+
+            const motivo = document.createElement("div");
+            motivo.className = "history-reason";
+            motivo.textContent = registro.motivo ? `Motivo: ${registro.motivo}` : "Motivo não informado";
+
+            const botoes = document.createElement("div");
+            botoes.className = "history-buttons";
+            botoes.appendChild(criarBotaoHistorico("Abrir", () => carregarRegistroDoHistorico(registro.id)));
+            botoes.appendChild(criarBotaoHistorico("Imprimir", () => imprimirRegistroDoHistorico(registro.id)));
+            botoes.appendChild(criarBotaoHistorico("Excluir", () => excluirRegistroDoHistorico(registro.id), "danger"));
+
+            item.appendChild(titulo);
+            item.appendChild(meta);
+            item.appendChild(motivo);
+            item.appendChild(botoes);
+            detalhesAluno.appendChild(item);
+          });
+
+          itemAluno.appendChild(detalhesAluno);
+        }
+
+        listaHistorico.appendChild(itemAluno);
       });
     }
 
